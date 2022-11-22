@@ -1,6 +1,8 @@
 import blenderproc as bproc
 import argparse
 import os
+from pathlib import Path
+
 import numpy as np
 
 parser = argparse.ArgumentParser()
@@ -8,12 +10,20 @@ parser.add_argument('bop_parent_path', help="Path to the bop datasets parent dir
 parser.add_argument('cc_textures_path', default="resources/cctextures", help="Path to downloaded cc textures")
 parser.add_argument('output_dir', help="Path to where the final files will be saved ")
 parser.add_argument('--num_scenes', type=int, default=2000, help="How many scenes with 25 images each to generate")
+parser.add_argument('--mesh', type=str,  help="Path to mesh of object")
 args = parser.parse_args()
 
 bproc.init()
 
+objs = bproc.loader.load_obj(args.mesh, use_legacy_obj_import=True)
+
+for o in objs: 
+    o.set_cp("bop_dataset_name", "CUSTOM")
+    o.set_cp("category_id", 1000)
+    o.set_scale([0.1, 0.1, 0.1])
+
 # load bop objects into the scene
-target_bop_objs = bproc.loader.load_bop_objs(bop_dataset_path = os.path.join(args.bop_parent_path, 'ycbv'), mm2m = True)
+# target_bop_objs = bproc.loader.load_bop_objs(bop_dataset_path = os.path.join(args.bop_parent_path, 'ycbv'), mm2m = True)
 
 # load distractor bop objects
 # tless_dist_bop_objs = bproc.loader.load_bop_objs(bop_dataset_path = os.path.join(args.bop_parent_path, 'tless'), model_type = 'cad', mm2m = True)
@@ -22,11 +32,11 @@ target_bop_objs = bproc.loader.load_bop_objs(bop_dataset_path = os.path.join(arg
 hope_dist_bop_objs = bproc.loader.load_bop_objs(bop_dataset_path = os.path.join(args.bop_parent_path, 'hope'), mm2m = True)
 
 # load BOP datset intrinsics
-bproc.loader.load_bop_intrinsics(bop_dataset_path = os.path.join(args.bop_parent_path, 'ycbv'))
+# bproc.loader.load_bop_intrinsics(bop_dataset_path = os.path.join(args.bop_parent_path, 'ycbv'))
 
 # set shading and hide objects
 # for obj in (target_bop_objs + tless_dist_bop_objs + hb_dist_bop_objs + tyol_dist_bop_objs):
-for obj in (hope_dist_bop_objs + target_bop_objs):
+for obj in (hope_dist_bop_objs + objs):
     obj.set_shading_mode('auto')
     obj.hide(True)
     
@@ -65,8 +75,9 @@ bproc.renderer.set_max_amount_of_samples(50)
 for i in range(args.num_scenes):
 
     # Sample bop objects for a scene
-    sampled_target_bop_objs = list(np.random.choice(target_bop_objs, size=21, replace=False))
-    
+    # sampled_target_bop_objs = list(np.random.choice(target_bop_objs, size=21, replace=False)) + objs
+    sampled_target_bop_objs = objs
+
     sampled_distractor_bop_objs = list(np.random.choice(hope_dist_bop_objs, size=20, replace=False))
     # sampled_distractor_bop_objs = list(np.random.choice(tless_dist_bop_objs, size=2, replace=False))
     # sampled_distractor_bop_objs += list(np.random.choice(hb_dist_bop_objs, size=2, replace=False))
@@ -102,6 +113,7 @@ for i in range(args.num_scenes):
     bproc.object.sample_poses(objects_to_sample = sampled_target_bop_objs + sampled_distractor_bop_objs,
                             sample_pose_func = sample_pose_func, 
                             max_tries = 1000)
+
             
     # Physics Positioning
     bproc.object.simulate_physics_and_fix_final_poses(min_simulation_time=3,
@@ -110,6 +122,14 @@ for i in range(args.num_scenes):
                                                     substeps_per_frame = 20,
                                                     solver_iters=25)
 
+    for o in objs: 
+        # o.set_rotation_euler([0, 180, 0])
+        mat = o.get_materials()[0]
+        print(f"mat: {mat}")
+
+        o.add_uv_mapping(overwrite=True, projection="smart")
+        # o.map_
+    
     # BVH tree used for camera obstacle checks
     bop_bvh_tree = bproc.object.create_bvh_tree_multi_objects(sampled_target_bop_objs + sampled_distractor_bop_objs)
 
@@ -122,7 +142,7 @@ for i in range(args.num_scenes):
                                 elevation_min = 5,
                                 elevation_max = 89)
         # Determine point of interest in scene as the object closest to the mean of a subset of objects
-        poi = bproc.object.compute_poi(np.random.choice(sampled_target_bop_objs, size=15, replace=False))
+        poi = bproc.object.compute_poi(np.random.choice(sampled_target_bop_objs, size=1, replace=False))
         # Compute rotation based on vector going from location towards poi
         rotation_matrix = bproc.camera.rotation_from_forward_vec(poi - location, inplane_rot=np.random.uniform(-3.14159, 3.14159))
         # Add homog cam pose based on location an rotation
